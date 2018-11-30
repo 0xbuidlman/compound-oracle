@@ -11,14 +11,14 @@ jobs:
           keys:
           - v1-dependencies-{{ checksum "package.json" }}
           - v1-dependencies-
-      - run: npm install
+      - run: yarn install
       - save_cache:
           paths:
             - node_modules
           key: v1-dependencies-{{ checksum "package.json" }}
       - attach_workspace:
           at: ~/repo
-      - run: npm run test
+      - run: yarn run test
 
   code_coverage:
     docker:
@@ -31,14 +31,14 @@ jobs:
           keys:
           - v1-dependencies-{{ checksum "package.json" }}
           - v1-dependencies-
-      - run: npm install
+      - run: yarn install
       - save_cache:
           paths:
             - node_modules
           key: v1-dependencies-{{ checksum "package.json" }}
       - attach_workspace:
           at: ~/repo
-      - run: npm run coverage
+      - run: yarn run coverage
       - store_artifacts:
           path: ~/repo/coverage.json
           destination: coverage.json
@@ -57,14 +57,14 @@ jobs:
           keys:
           - v1-dependencies-{{ checksum "package.json" }}
           - v1-dependencies-
-      - run: npm install
+      - run: yarn install
       - save_cache:
           paths:
             - node_modules
           key: v1-dependencies-{{ checksum "package.json" }}
       - attach_workspace:
           at: ~/repo
-      - run: npm run lint
+      - run: yarn run lint
 
 workflows:
   version: 2

@@ -1,6 +1,7 @@
 pragma solidity ^0.4.24;
 
 import "./Exponential.sol";
+import "./DSValue.sol";
 
 contract PriceOracle is Exponential {
 
@@ -15,6 +16,19 @@ contract PriceOracle is Exponential {
     uint public constant maxSwingMantissa = (10 ** 17); // 0.1
 
     /**
+      * @dev Mapping of asset addresses to DSValue price oracle contracts. The price contracts
+      *      should be DSValue contracts whose value is the `eth:asset` price scaled by 1e18.
+      *      That is, 1 eth is worth how much of the asset (e.g. 1 eth = 100 USD). We want
+      *      to know the inverse, which is how much eth is one asset worth. This `asset:eth`
+      *      is the multiplicative inverse (in that example, 1/100). The math is a bit trickier
+      *      since we need to descale the number by 1e18, inverse, and then rescale the number.
+      *      We perform this operation to return the `asset:eth` price for these reader assets.
+      *
+      * map: assetAddress -> DSValue price oracle
+      */
+    mapping(address => DSValue) public readers;
+
+    /**
       * @dev Mapping of asset addresses and their corresponding price in terms of Eth-Wei
       *      which is simply equal to AssetWeiPrice * 10e18. For instance, if OMG token was
       *      worth 5x Eth then the price for OMG would be 5*10e18 or Exp({mantissa: 5000000000000000000}).
@@ -22,10 +36,27 @@ contract PriceOracle is Exponential {
       */
     mapping(address => Exp) public _assetPrices;
 
-    constructor(address _poster) public {
+    constructor(address _poster, address addr0, address reader0, address addr1, address reader1) public {
         anchorAdmin = msg.sender;
         poster = _poster;
         maxSwing = Exp({mantissa : maxSwingMantissa});
+
+        // Make sure the assets are zero or different
+        assert(addr0 == address(0) || (addr0 != addr1));
+
+        if (addr0 != address(0)) {
+            assert(reader0 != address(0));
+            readers[addr0] = DSValue(reader0);
+        } else {
+            assert(reader0 == address(0));
+        }
+
+        if (addr1 != address(0)) {
+            assert(reader1 != address(0));
+            readers[addr1] = DSValue(reader1);
+        } else {
+            assert(reader1 == address(0));
+        }
     }
 
     /**
@@ -52,7 +83,8 @@ contract PriceOracle is Exponential {
         SET_PRICE_NO_ANCHOR_PRICE_OR_INITIAL_PRICE_ZERO,
         SET_PRICE_PERMISSION_CHECK,
         SET_PRICE_ZERO_PRICE,
-        SET_PRICES_PARAM_VALIDATION
+        SET_PRICES_PARAM_VALIDATION,
+        SET_PRICE_IS_READER_ASSET
     }
 
     /**
@@ -248,10 +280,38 @@ contract PriceOracle is Exponential {
       * @return uint mantissa of asset price (scaled by 1e18) or zero if unset or contract paused
       */
     function assetPrices(address asset) public view returns (uint) {
+        // Note: zero is treated by the money market as an invalid
+        //       price and will cease operations with that asset
+        //       when zero.
+        //
+        // We get the price as:
+        //
+        //  1. If the contract is paused, return 0.
+        //  2. If the asset is a reader asset:
+        //    a. If the reader has a value set, invert it and return.
+        //    b. Else, return 0.
+        //  3. Return price in `_assetPrices`, which may be zero.
+
         if (paused) {
             return 0;
         } else {
-            return _assetPrices[asset].mantissa;
+            if (readers[asset] != address(0)) {
+                (bytes32 readValue, bool foundValue) = readers[asset].peek();
+
+                if (foundValue) {
+                    (Error error, Exp memory invertedVal) = getExp(mantissaOne, uint256(readValue));
+
+                    if (error != Error.NO_ERROR) {
+                        return 0;
+                    }
+
+                    return invertedVal.mantissa;
+                } else {
+                    return 0;
+                }
+            } else {
+                return _assetPrices[asset].mantissa;
+            }
         }
     }
 
@@ -301,6 +361,10 @@ contract PriceOracle is Exponential {
         localVars.currentPeriod = (block.number / numBlocksPerPeriod) + 1;
         localVars.pendingAnchorMantissa = pendingAnchors[asset];
         localVars.price = Exp({mantissa : requestedPriceMantissa});
+
+        if (readers[asset] != address(0)) {
+            return failOracle(asset, OracleError.FAILED_TO_SET_PRICE, OracleFailureInfo.SET_PRICE_IS_READER_ASSET);
+        }
 
         if (localVars.pendingAnchorMantissa != 0) {
             // let's explicitly set to 0 rather than relying on default of declaration

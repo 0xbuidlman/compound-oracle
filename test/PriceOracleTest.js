@@ -2,7 +2,7 @@
 
 const {ErrorEnum, OracleErrorEnum, OracleFailureInfoEnum} = require('./ErrorReporter');
 const {fallback, getContract, readAndExecContract} = require('./Contract');
-const {checksum, getExpMantissa} = require('./Utils');
+const {checksum, encodeUint, getExpMantissa} = require('./Utils');
 const {setInitialPrice, setPendingAnchor, setupPricingContracts,
       setupPricingHarnessContracts, setupPricingContractsWithMultipleAssets,
       validatePriceAndAnchor} = require('./PriceOracleTestHelpers');
@@ -22,7 +22,7 @@ contract('PriceOracle', function ([root, ...accounts]) {
 
   describe("admin / _setPendingAnchor", async () => {
     it("can be changed by anchor admin", async () => {
-      const priceOracle = await PriceOracle.new(poster).send({from: anchorAdmin});
+      const priceOracle = await PriceOracle.new(poster, 0, 0, 0, 0).send({from: anchorAdmin});
 
       // asset to use
       const omg = await EIP20.new(100, "omg", 18, "omg").send({from: root});
@@ -37,7 +37,7 @@ contract('PriceOracle', function ([root, ...accounts]) {
     });
 
     it("emits a log when changed", async () => {
-      const priceOracle = await PriceOracle.new(poster).send({from: anchorAdmin});
+      const priceOracle = await PriceOracle.new(poster, 0, 0, 0, 0).send({from: anchorAdmin});
 
       // asset to use
       const omg = await EIP20.new(100, "omg", 18, "omg").send({from: root});
@@ -67,7 +67,7 @@ contract('PriceOracle', function ([root, ...accounts]) {
     });
 
     it("can not be changed by non-anchor admin", async () => {
-      const priceOracle = await PriceOracle.new(poster).send({from: anchorAdmin});
+      const priceOracle = await PriceOracle.new(poster, 0, 0, 0, 0).send({from: anchorAdmin});
 
       // asset to use
       const omg = await EIP20.new(100, "omg", 18, "omg").send({from: root});
@@ -89,14 +89,14 @@ contract('PriceOracle', function ([root, ...accounts]) {
   describe("admin / _setPendingAnchorAdmin", async () => {
 
     it("anchor admin is initially set to root and pendingAnchorAdmin is 0", async () => {
-      const priceOracle = await PriceOracle.new(poster).send({from: anchorAdmin});
+      const priceOracle = await PriceOracle.new(poster, 0, 0, 0, 0).send({from: anchorAdmin});
 
       assert.matchesAddress(anchorAdmin, await priceOracle.methods.anchorAdmin().call());
       assert.equal(0, await priceOracle.methods.pendingAnchorAdmin().call(), "pendingAnchorAdmin should be zero for a new contract");
     });
 
     it("can be used by anchor admin", async () => {
-      const priceOracle = await PriceOracle.new(poster).send({from: anchorAdmin});
+      const priceOracle = await PriceOracle.new(poster, 0, 0, 0, 0).send({from: anchorAdmin});
       const [errorCode0, _tx0, _error0] = await readAndExecContract(priceOracle, '_setPendingAnchorAdmin', [nonPoster], {from: anchorAdmin});
 
       assert.noError(errorCode0);
@@ -105,7 +105,7 @@ contract('PriceOracle', function ([root, ...accounts]) {
     });
 
     it("can be used to clear the pendingAnchorAdmin", async () => {
-      const priceOracle = await PriceOracle.new(poster).send({from: anchorAdmin});
+      const priceOracle = await PriceOracle.new(poster, 0, 0, 0, 0).send({from: anchorAdmin});
       const [errorCode0, _tx0, _error0] = await readAndExecContract(priceOracle, '_setPendingAnchorAdmin', [nonPoster], {from: anchorAdmin});
       assert.noError(errorCode0);
 
@@ -117,7 +117,7 @@ contract('PriceOracle', function ([root, ...accounts]) {
     });
 
     it("fails if not called by admin", async () => {
-      const priceOracle = await PriceOracle.new(poster).send({from: anchorAdmin});
+      const priceOracle = await PriceOracle.new(poster, 0, 0, 0, 0).send({from: anchorAdmin});
 
       const [errorCode, _tx, _error] = await readAndExecContract(priceOracle, '_setPendingAnchorAdmin', [nonPoster], {from: nonPoster});
 
@@ -125,7 +125,7 @@ contract('PriceOracle', function ([root, ...accounts]) {
     });
 
     it("emits a log when pendingAnchorAdmin is changed", async () => {
-      const priceOracle = await PriceOracle.new(poster).send({from: anchorAdmin});
+      const priceOracle = await PriceOracle.new(poster, 0, 0, 0, 0).send({from: anchorAdmin});
       const [_errorCode, tx, _error] = await readAndExecContract(priceOracle, '_setPendingAnchorAdmin', [nonPoster], {from: anchorAdmin});
 
       assert.hasLog(tx, 'NewPendingAnchorAdmin', {oldPendingAnchorAdmin: addressZero, newPendingAnchorAdmin: checksum(nonPoster)});
@@ -136,7 +136,7 @@ contract('PriceOracle', function ([root, ...accounts]) {
 
     it("fails if not called by pendingAnchorAdmin", async () => {
       // setup
-      const priceOracle = await PriceOracle.new(poster).send({from: anchorAdmin});
+      const priceOracle = await PriceOracle.new(poster, 0, 0, 0, 0).send({from: anchorAdmin});
       const [errorCode0, _tx0, _error0] = await readAndExecContract(priceOracle, '_setPendingAnchorAdmin', [nonPoster], {from: anchorAdmin});
       assert.noError(errorCode0);
 
@@ -153,7 +153,7 @@ contract('PriceOracle', function ([root, ...accounts]) {
 
     it("succeeds if called by pendingAnchorAdmin", async () => {
       // setup
-      const priceOracle = await PriceOracle.new(poster).send({from: anchorAdmin});
+      const priceOracle = await PriceOracle.new(poster, 0, 0, 0, 0).send({from: anchorAdmin});
       const [errorCode0, _tx0, _error0] = await readAndExecContract(priceOracle, '_setPendingAnchorAdmin', [nonPoster], {from: anchorAdmin});
       assert.noError(errorCode0);
 
@@ -196,6 +196,15 @@ contract('PriceOracle', function ([root, ...accounts]) {
       }, ['asset', checksum(assets[i]._address)]);
     }
   }
+
+  describe('readers', async () => {
+    it("should return reader if set", async () => {
+      const {priceOracle, assets, readerAsset, readerOracle} = await setupPricingContractsWithMultipleAssets(anchorAdmin, poster, root, 3, true);
+
+      assert.equal(await priceOracle.methods.readers(assets[0]._address).call(), 0);
+      assert.equal(await priceOracle.methods.readers(readerAsset._address).call(), readerOracle._address);
+    });
+  });
 
   describe('pause', async () => {
     it("starts unpaused", async () => {
@@ -314,10 +323,29 @@ contract('PriceOracle', function ([root, ...accounts]) {
 
       assert.equal(price, 0);
     });
+
+    it("emits an error and returns 0 when paused for reader", async () => {
+      const {priceOracle, readerAsset, readerOracle} = await setupPricingContracts(anchorAdmin, poster, root);
+
+      const [price, tx2, _error2] = await readAndExecContract(priceOracle, 'getPrice', [readerAsset._address], {from: nonPoster});
+      assert.hasNoMatchingLog(tx2, 'OracleFailure');
+
+      assert.equal(price, 1.0e36/80.0e18);
+
+      const [errorCodes, tx, _error] = await readAndExecContract(priceOracle, '_setPaused', [true], {from: anchorAdmin});
+      assert.oracleSuccess(tx);
+
+      // Check that it is paused
+      assert.equal(await priceOracle.methods.paused().call(), true);
+
+      const [price2, tx3, _error3] = await readAndExecContract(priceOracle, 'getPrice', [readerAsset._address], {from: nonPoster});
+      assert.hasNoMatchingLog(tx3, 'OracleFailure');
+
+      assert.equal(price2, 0);
+    });
   });
 
   describe("getPrice / setPrices", async () => {
-
     it("accepts 1 initial price", async () => {
       await testSetPricesInitialHappyPath(1);
     });
@@ -352,6 +380,87 @@ contract('PriceOracle', function ([root, ...accounts]) {
 
       await validatePriceAndAnchor(priceOracle, assets[0], prices[1], prices[1]);
       await validatePriceAndAnchor(priceOracle, assets[1], prices[4], prices[4]);
+    });
+
+    it("handles a price with a reader", async () => {
+      const {priceOracle, assets} = await setupPricingContractsWithMultipleAssets(anchorAdmin, poster, root, 2, true);
+
+      const assetAddresses = [assets[0]._address, assets[1]._address];
+      const prices = [5, 5];
+
+      const [errorCodes, tx, _error]  = await readAndExecContract(priceOracle, 'setPrices', [assetAddresses, prices], {from: poster});
+
+      const logs = tx.events['OracleFailure'];
+
+      assert.noOracleError(errorCodes[0]);
+      assert.hasOracleErrorCode(errorCodes[1], OracleErrorEnum.FAILED_TO_SET_PRICE);
+
+      await validatePriceAndAnchor(priceOracle, assets[0], 5, 5);
+      await validatePriceAndAnchor(priceOracle, assets[1], 1.0e36/200.0e18, 0);
+    });
+
+    it("handles a price with two readers", async () => {
+      const {priceOracle, assets} = await setupPricingContractsWithMultipleAssets(anchorAdmin, poster, root, 3, true, true);
+
+      const assetAddresses = [assets[0]._address, assets[1]._address, assets[2]._address];
+      const prices = [5, 5, 5];
+
+      const [errorCodes, tx, _error]  = await readAndExecContract(priceOracle, 'setPrices', [assetAddresses, prices], {from: poster});
+
+      const logs = tx.events['OracleFailure'];
+
+      assert.noOracleError(errorCodes[0]);
+      assert.hasOracleErrorCode(errorCodes[1], OracleErrorEnum.FAILED_TO_SET_PRICE);
+      assert.hasOracleErrorCode(errorCodes[2], OracleErrorEnum.FAILED_TO_SET_PRICE);
+
+      await validatePriceAndAnchor(priceOracle, assets[0], 5, 5);
+      await validatePriceAndAnchor(priceOracle, assets[1], 1.0e36/80.0e17, 0);
+      await validatePriceAndAnchor(priceOracle, assets[2], 1.0e36/200.0e18, 0);
+    });
+
+    it("handles a failed price read zero with a reader", async () => {
+      const {priceOracle, readerAsset, readerOracle} = await setupPricingContractsWithMultipleAssets(anchorAdmin, poster, root, 2, true);
+
+      await validatePriceAndAnchor(priceOracle, readerAsset, 1.0e36/200.0e18, 0);
+
+      await readerOracle.methods.set(encodeUint(0.0e18)).send({from: root});
+
+      await validatePriceAndAnchor(priceOracle, readerAsset, 0, 0);
+    });
+
+    it("handles a failed price read max with a reader", async () => {
+      const {priceOracle, readerAsset, readerOracle} = await setupPricingContractsWithMultipleAssets(anchorAdmin, poster, root, 2, true);
+
+      await validatePriceAndAnchor(priceOracle, readerAsset, 1.0e36/200.0e18, 0);
+
+      await readerOracle.methods.set(encodeUint(-1)).send({from: root});
+
+      await validatePriceAndAnchor(priceOracle, readerAsset, 0, 0);
+    });
+
+    // TODO: add multiple reader assets
+
+    it("returns zero if reader is unset", async () => {
+      const {priceOracle, assets, readerOracle} = await setupPricingContractsWithMultipleAssets(anchorAdmin, poster, root, 2, true);
+
+      const assetAddresses = [assets[0]._address, assets[1]._address];
+      const prices = [5, 5];
+
+      const [errorCodes, tx, _error]  = await readAndExecContract(priceOracle, 'setPrices', [assetAddresses, prices], {from: poster});
+
+      const logs = tx.events['OracleFailure'];
+
+      assert.noOracleError(errorCodes[0]);
+      assert.hasOracleErrorCode(errorCodes[1], OracleErrorEnum.FAILED_TO_SET_PRICE);
+
+      await validatePriceAndAnchor(priceOracle, assets[0], 5, 5);
+      await validatePriceAndAnchor(priceOracle, assets[1], 1.0e36/200.0e18, 0);
+
+      // Now, unset the price in the oracle and verify we get a zero response
+      await readerOracle.methods.unset().send({from: anchorAdmin});
+
+      await validatePriceAndAnchor(priceOracle, assets[0], 5, 5);
+      await validatePriceAndAnchor(priceOracle, assets[1], 0, 0);
     });
 
     it("rejects mis-matched param array sizes", async () => {
@@ -413,7 +522,6 @@ contract('PriceOracle', function ([root, ...accounts]) {
   });
 
   describe("setPrice", async () => {
-
     const expectNoPriceSentToMoneyMarket = 0;
     const expectNoAnchor = 0;
 

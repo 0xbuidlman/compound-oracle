@@ -189,10 +189,16 @@ function getExpMantissa(float) {
   return Math.floor(float * 1.0e18);
 }
 
+// Encodes a value as a Solidity uint, which can be passed in as bytes32 for some reason.
+function encodeUint(num) {
+  return web3_.eth.abi.encodeParameter('uint256', num.toString());
+}
+
 module.exports = {
   assets,
   bigNums,
   checksum,
+  encodeUint,
   gas,
   getExpMantissa,
   range,
