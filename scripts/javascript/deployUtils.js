@@ -38,18 +38,20 @@ function load(network) {
   return loadNetworkConfig(network);
 }
 
-function deploy(deployer, network, contract, args=[]) {
+function deploy(deployer, network, contract, args=[], givenContractName=undefined) {
   const web3 = new Web3_(deployer.provider);
-  const contractName = contract._json.contractName;
+  const contractName = givenContractName || contract._json.contractName;
 
   console.log(`Deploying ${contractName} with ${args}...`);
-  return deployer.deploy(contract, args).then(async (deployed) => {
+  return deployer.deploy(contract, ...args).then(async (deployed) => {
     const trx = await web3.eth.getTransaction(deployed.transactionHash);
 
     save(network, ["Contracts", contractName], deployed.address);
     save(network, ["Blocks", contractName], trx.blockNumber);
     save(`${network}-abi`, [contractName], deployed.abi);
     console.log(`Deployed ${contractName} at ${deployed.address}.`);
+
+    return deployed.address;
   });
 }
 

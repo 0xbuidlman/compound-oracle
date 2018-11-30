@@ -16,5 +16,4 @@ contract ErrorReporterHarness is ErrorReporter {
 
         failOpaque(info, opaqueError);
     }
-
 }

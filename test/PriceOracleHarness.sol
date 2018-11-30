@@ -4,8 +4,11 @@ import "../contracts/PriceOracle.sol";
 
 contract PriceOracleHarness is PriceOracle {
     mapping (address => uint256) updateCount;
+    address[] public readerAssets;
 
-    constructor(address poster) public PriceOracle(poster) {
+    constructor(address poster, address addr0, address reader0, address addr1, address reader1) public PriceOracle(poster, addr0, reader0, addr1, reader1) {
+        readerAssets.push(addr0);
+        readerAssets.push(addr1);
     }
 
     function numSetPriceCalls(address asset) public view returns (uint256) {
